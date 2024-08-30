@@ -3,22 +3,24 @@ package main
 import (
 	"encoding/gob"
 	"net"
-	"time"
 )
 
-type socket struct{}
+type socket struct {
+	addr string
+}
 
 func (socket socket) dial() (net.Conn, error) {
-	time.Sleep(3 * time.Second)
-	return nil, nil
+	return net.Dial("unix", socket.addr)
 }
 
 func (socket socket) send(encoder *gob.Encoder, v string) error {
-	time.Sleep(3 * time.Second)
-	return nil
+	return encoder.Encode([]byte(v + "\n"))
 }
 
 func (socket socket) receive(decoder *gob.Decoder) (string, error) {
-	time.Sleep(3 * time.Second)
-	return "", nil
+	var data []byte
+	if err := decoder.Decode(&data); err != nil {
+		return "", err
+	}
+	return string(data), nil
 }

@@ -1,9 +1,10 @@
 package main
 
 import (
+	"encoding/gob"
 	"fmt"
 	"io"
-	"net"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -12,20 +13,33 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const (
+	StateConnecting = "Connecting"
+	StateSending    = "Sending"
+	StateReceiving  = "Receiving"
+
+	MessageInitial = "How can I assist you today?"
+
+	HelpNormalMode = "[NORMAL] i/a: Prompt • j/k: Navigate • ctrl+c: Quit"
+	HelpInsertMode = "[INSERT] enter: Submit • esc: View • ctrl+c: Quit"
+)
+
 var (
 	helpStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("69"))
 )
 
 type model struct {
-	socket socket
-	conn   net.Conn
+	socket  socket
+	encoder *gob.Encoder
+	decoder *gob.Decoder
 
-	prompt bool
-	status string
+	prompt string
+	state  string
 
 	loading   bool
 	viewReady bool
+	messages  []string
 
 	viewport  viewport.Model
 	textinput textinput.Model
@@ -34,14 +48,15 @@ type model struct {
 	err error
 }
 
-func initialModel() model {
+func initialModel(sockAddr, prompt string) model {
 	m := model{
-		socket:    socket{},
+		socket:    socket{sockAddr},
 		loading:   true,
 		textinput: textinput.New(),
 		spinner:   spinner.New(),
-		prompt:    false,
-		status:    "Connecting",
+		prompt:    prompt,
+		state:     StateConnecting,
+		messages:  []string{},
 	}
 
 	m.textinput.Blur()
@@ -77,11 +92,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				PaddingRight(2)
 			m.viewport.Width = msg.Width - roundedBorderSize
 			m.viewport.Height = msg.Height - footerHeight
-			content := ""
-			for i := range 100 {
-				content += fmt.Sprintf(" %03d: Hi, viewport\n", i)
-			}
-			m.viewport.SetContent(content)
+			m.viewport.SetContent(MessageInitial)
 			m.viewReady = true
 		} else {
 			m.viewport.Width = msg.Width - roundedBorderSize
@@ -94,9 +105,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyEsc:
 			m.textinput.Blur()
 		case tea.KeyEnter:
+			message := m.textinput.Value()
+			m.messages = append(m.messages, fmt.Sprintf("# You\n\n%s\n", message))
+			content := strings.Join(m.messages, "\n")
+			m.viewport.SetContent(content)
+
 			m.loading = true
-			m.status = "Sending"
 			m.textinput.Blur()
+			m.state = StateSending
 			cmds = append(cmds, m.sendCmd)
 		default:
 			if m.textinput.Focused() {
@@ -109,20 +125,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case connectedMsg:
-		m.conn = msg.conn
-		m.prompt = true
+		m.encoder = gob.NewEncoder(msg.conn)
+		m.decoder = gob.NewDecoder(msg.conn)
 		cmds = append(cmds, m.receiveCmd)
 	case promptMsg:
 		m.loading = false
-		m.prompt = true
-		m.textinput.Focus()
 	case sentMsg:
-		m.prompt = false
 		m.textinput.Reset()
-		m.status = "Waiting"
+		m.state = StateReceiving
 		cmds = append(cmds, m.receiveCmd)
 	case responseMsg:
+		m.messages = append(m.messages, fmt.Sprintf("# Assistant\n\n%s", msg.message))
+		content := strings.Join(m.messages, "\n")
+		m.viewport.SetContent(content)
+		m.viewport.GotoBottom()
+
 		m.loading = false
+		cmds = append(cmds, m.receiveCmd)
 	case errMsg:
 		m.err = msg
 	case closeMsg:
@@ -149,7 +168,7 @@ func (m model) View() string {
 	}
 	inputView := m.textinput.View()
 	if m.loading {
-		inputView = fmt.Sprintf("%s %s...", m.spinner.View(), m.status)
+		inputView = fmt.Sprintf("%s %s...", m.spinner.View(), m.state)
 	}
 	return fmt.Sprintf(
 		"%s\n%s\n%s",
@@ -161,9 +180,9 @@ func (m model) View() string {
 
 func (m model) helpView() string {
 	if m.textinput.Focused() {
-		return helpStyle.Render("[INSERT] enter: Submit • esc: View • ctrl+c: Quit")
+		return helpStyle.Render(HelpInsertMode)
 	} else {
-		return helpStyle.Render("[NORMAL] i/a: Prompt • j/k: Navigate • ctrl+c: Quit")
+		return helpStyle.Render(HelpNormalMode)
 	}
 }
 
@@ -180,7 +199,7 @@ func (m model) sendCmd() tea.Msg {
 	if input == "" {
 		return promptMsg{}
 	}
-	err := m.socket.send(nil, input)
+	err := m.socket.send(m.encoder, input)
 	if err != nil {
 		return errMsg{err}
 	}
@@ -188,7 +207,7 @@ func (m model) sendCmd() tea.Msg {
 }
 
 func (m model) receiveCmd() tea.Msg {
-	message, err := m.socket.receive(nil)
+	message, err := m.socket.receive(m.decoder)
 	if err != nil {
 		if err == io.EOF {
 			return closeMsg{err}
@@ -196,14 +215,9 @@ func (m model) receiveCmd() tea.Msg {
 			return errMsg{err}
 		}
 	}
-	if m.prompt {
+	if message == m.prompt {
 		return promptMsg{}
 	} else {
 		return responseMsg{message}
 	}
-	// if message == "PROMPT" {
-	// 	return promptMsg{}
-	// } else {
-	// 	return responseMsg{message}
-	// }
 }

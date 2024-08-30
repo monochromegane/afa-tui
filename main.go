@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -9,7 +10,8 @@ import (
 var _ tea.Model = &model{}
 
 func main() {
-	prog := tea.NewProgram(initialModel(), tea.WithAltScreen())
+	addr := os.Args[1]
+	prog := tea.NewProgram(initialModel(addr, "PROMPT"), tea.WithAltScreen())
 	if err := prog.Start(); err != nil {
 		log.Fatal(err)
 	}
