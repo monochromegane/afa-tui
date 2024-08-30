@@ -49,7 +49,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				PaddingRight(2)
 			m.viewport.Width = msg.Width - roundedBorderSize
 			m.viewport.Height = msg.Height - footerHeight
-			m.viewport.SetContent("Hi, viewport")
+			content := ""
+			for i := range 100 {
+				content += fmt.Sprintf(" %03d: Hi, viewport\n", i)
+			}
+			m.viewport.SetContent(content)
 			m.viewReady = true
 		} else {
 			m.viewport.Width = msg.Width - roundedBorderSize
@@ -59,20 +63,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.Type {
 		case tea.KeyCtrlC:
 			return m, tea.Quit
+		case tea.KeyEsc:
+			m.textinput.Blur()
+		default:
+			if m.textinput.Focused() {
+				m.textinput, cmd = m.textinput.Update(msg)
+				cmds = append(cmds, cmd)
+			} else {
+				if key := msg.String(); key == "i" || key == "a" {
+					m.textinput.Focus()
+				}
+			}
 		}
 	}
 
-	m.textinput, cmd = m.textinput.Update(msg)
-	cmds = append(cmds, cmd)
-	m.viewport, cmd = m.viewport.Update(msg)
-	cmds = append(cmds, cmd)
+	if !m.textinput.Focused() {
+		m.viewport, cmd = m.viewport.Update(msg)
+		cmds = append(cmds, cmd)
+	}
 
 	return m, tea.Batch(cmds...)
 }
 
 func (m model) View() string {
 	if !m.viewReady {
-		return "Hi"
+		return "Initilizing..."
 	}
 	return fmt.Sprintf(
 		"%s\n%s",
