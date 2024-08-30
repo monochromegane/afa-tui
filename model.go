@@ -125,6 +125,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 	case errMsg:
 		m.err = msg
+	case closeMsg:
+		return m, tea.Quit
 	default:
 		m.spinner, cmd = m.spinner.Update(msg)
 		cmds = append(cmds, cmd)
