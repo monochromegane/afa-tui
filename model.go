@@ -9,6 +9,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+var helpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render
+
 type model struct {
 	viewReady bool
 
@@ -90,8 +92,17 @@ func (m model) View() string {
 		return "Initilizing..."
 	}
 	return fmt.Sprintf(
-		"%s\n%s",
+		"%s\n%s\n%s",
 		m.viewport.View(),
 		m.textinput.View(),
+		m.helpView(),
 	)
+}
+
+func (m model) helpView() string {
+	if m.textinput.Focused() {
+		return helpStyle("[INSERT] enter: Submit • esc: View • ctrl+c: Quit")
+	} else {
+		return helpStyle("[NORMAL] i/a: Edit • j/k: Navigate • ctrl+c: Quit")
+	}
 }
