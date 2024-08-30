@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -42,6 +43,7 @@ type model struct {
 	messages  []string
 
 	viewport  viewport.Model
+	renderer  *glamour.TermRenderer
 	textinput textinput.Model
 	spinner   spinner.Model
 
@@ -76,6 +78,7 @@ func (m model) Init() tea.Cmd {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
+	var err error
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -92,6 +95,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				PaddingRight(2)
 			m.viewport.Width = msg.Width - roundedBorderSize
 			m.viewport.Height = msg.Height - footerHeight
+			m.renderer, err = glamour.NewTermRenderer(glamour.WithAutoStyle())
+			if err != nil {
+				m.err = err
+				return m, m.errCmd
+			}
 			m.viewport.SetContent(MessageInitial)
 			m.viewReady = true
 		} else {
@@ -106,8 +114,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.textinput.Blur()
 		case tea.KeyEnter:
 			message := m.textinput.Value()
-			m.messages = append(m.messages, fmt.Sprintf("# You\n\n%s\n", message))
-			content := strings.Join(m.messages, "\n")
+			if message == "" || m.loading {
+				break
+			}
+
+			rendered, err := m.renderer.Render(fmt.Sprintf("# You\n\n%s\n", message))
+			if err != nil {
+				m.err = err
+				return m, m.errCmd
+			}
+			m.messages = append(m.messages, rendered)
+			content := strings.Join(m.messages, "")
 			m.viewport.SetContent(content)
 
 			m.loading = true
@@ -135,8 +152,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = StateReceiving
 		cmds = append(cmds, m.receiveCmd)
 	case responseMsg:
-		m.messages = append(m.messages, fmt.Sprintf("# Assistant\n\n%s", msg.message))
-		content := strings.Join(m.messages, "\n")
+		rendered, err := m.renderer.Render(fmt.Sprintf("# Assistant\n\n%s", msg.message))
+		if err != nil {
+			m.err = err
+			return m, m.errCmd
+		}
+		m.messages = append(m.messages, rendered)
+		content := strings.Join(m.messages, "")
 		m.viewport.SetContent(content)
 		m.viewport.GotoBottom()
 
@@ -196,9 +218,6 @@ func (m model) connectCmd() tea.Msg {
 
 func (m model) sendCmd() tea.Msg {
 	input := m.textinput.Value()
-	if input == "" {
-		return promptMsg{}
-	}
 	err := m.socket.send(m.encoder, input)
 	if err != nil {
 		return errMsg{err}
@@ -220,4 +239,8 @@ func (m model) receiveCmd() tea.Msg {
 	} else {
 		return responseMsg{message}
 	}
+}
+
+func (m model) errCmd() tea.Msg {
+	return errMsg{m.err}
 }
