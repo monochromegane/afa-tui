@@ -22,8 +22,9 @@ const (
 
 	MessageInitial = "How can I assist you today?"
 
-	HelpNormalMode = "[NORMAL] i/a: Prompt • j/k: Navigate • ctrl+c: Quit"
-	HelpInsertMode = "[INSERT] enter: Submit • esc: View • ctrl+c: Quit"
+	HelpNormalMode         = "[NORMAL] i/a: Prompt • j/k: Navigate • ctrl+c: Quit"
+	HelpNormalReadOnlyMode = "[NORMAL](Read Only) j/k: Navigate • ctrl+c: Quit"
+	HelpInsertMode         = "[INSERT] enter: Submit • esc: View • ctrl+c: Quit"
 )
 
 var (
@@ -39,10 +40,11 @@ type model struct {
 	prompt string
 	state  string
 
-	loading   bool
-	viewReady bool
-	messages  []string
-	buffer    bytes.Buffer
+	loading    bool
+	connecting bool
+	viewReady  bool
+	messages   []string
+	buffer     bytes.Buffer
 
 	viewport  viewport.Model
 	renderer  *glamour.TermRenderer
@@ -54,13 +56,14 @@ type model struct {
 
 func initialModel(sockAddr, prompt string) model {
 	m := model{
-		socket:    socket{sockAddr},
-		loading:   true,
-		textinput: textinput.New(),
-		spinner:   spinner.New(),
-		prompt:    prompt,
-		state:     StateConnecting,
-		messages:  []string{},
+		socket:     socket{sockAddr},
+		loading:    true,
+		connecting: false,
+		textinput:  textinput.New(),
+		spinner:    spinner.New(),
+		prompt:     prompt,
+		state:      StateConnecting,
+		messages:   []string{},
 	}
 
 	m.textinput.Blur()
@@ -138,12 +141,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.textinput, cmd = m.textinput.Update(msg)
 				cmds = append(cmds, cmd)
 			} else {
-				if key := msg.String(); key == "i" || key == "a" {
+				if key := msg.String(); m.connecting && (key == "i" || key == "a") {
 					m.textinput.Focus()
 				}
 			}
 		}
 	case connectedMsg:
+		m.connecting = true
 		m.encoder = gob.NewEncoder(msg.conn)
 		m.decoder = gob.NewDecoder(msg.conn)
 		cmds = append(cmds, m.receiveCmd)
@@ -174,12 +178,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.SetContent(content)
 		m.viewport.GotoBottom()
 
-		m.loading = false
 		cmds = append(cmds, m.receiveCmd)
 	case errMsg:
 		m.err = msg
 	case closeMsg:
-		return m, tea.Quit
+		m.loading = false
+		m.connecting = false
+		m.textinput.Blur()
 	default:
 		m.spinner, cmd = m.spinner.Update(msg)
 		cmds = append(cmds, cmd)
@@ -215,8 +220,10 @@ func (m model) View() string {
 func (m model) helpView() string {
 	if m.textinput.Focused() {
 		return helpStyle.Render(HelpInsertMode)
-	} else {
+	} else if m.connecting {
 		return helpStyle.Render(HelpNormalMode)
+	} else {
+		return helpStyle.Render(HelpNormalReadOnlyMode)
 	}
 }
 
