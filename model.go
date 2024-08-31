@@ -40,11 +40,12 @@ type model struct {
 	prompt string
 	state  string
 
-	loading    bool
-	connecting bool
-	viewReady  bool
-	messages   []string
-	buffer     bytes.Buffer
+	loading     bool
+	interacting bool
+	viewReady   bool
+	messages    []string
+	buffer      bytes.Buffer
+	rendered    string
 
 	viewport  viewport.Model
 	renderer  *glamour.TermRenderer
@@ -56,14 +57,14 @@ type model struct {
 
 func initialModel(sockAddr, prompt string) model {
 	m := model{
-		socket:     socket{sockAddr},
-		loading:    true,
-		connecting: false,
-		textinput:  textinput.New(),
-		spinner:    spinner.New(),
-		prompt:     prompt,
-		state:      StateConnecting,
-		messages:   []string{},
+		socket:      socket{sockAddr},
+		loading:     true,
+		interacting: false,
+		textinput:   textinput.New(),
+		spinner:     spinner.New(),
+		prompt:      prompt,
+		state:       StateConnecting,
+		messages:    []string{},
 	}
 
 	m.textinput.Blur()
@@ -141,25 +142,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.textinput, cmd = m.textinput.Update(msg)
 				cmds = append(cmds, cmd)
 			} else {
-				if key := msg.String(); m.connecting && (key == "i" || key == "a") {
+				if key := msg.String(); m.interacting && (key == "i" || key == "a") {
 					m.textinput.Focus()
 				}
 			}
 		}
 	case connectedMsg:
-		m.connecting = true
 		m.encoder = gob.NewEncoder(msg.conn)
 		m.decoder = gob.NewDecoder(msg.conn)
 		cmds = append(cmds, m.receiveCmd)
 	case promptMsg:
-		message := m.buffer.String()
-		rendered, err := m.renderer.Render(fmt.Sprintf("# Assistant\n\n%s", message))
-		if err != nil {
-			m.err = err
-			return m, m.errCmd
-		}
-		m.messages = append(m.messages, rendered)
+		m.messages = append(m.messages, m.rendered)
+		m.interacting = true
 		m.loading = false
+		m.rendered = ""
 		m.buffer.Reset()
 	case sentMsg:
 		m.textinput.Reset()
@@ -168,12 +164,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case responseMsg:
 		m.buffer.WriteString(msg.message)
 		message := m.buffer.String()
-		rendered, err := m.renderer.Render(fmt.Sprintf("# Assistant\n\n%s", message))
+		format := "%s"
+		if m.interacting {
+			format = "# Assistant\n\n%s"
+		}
+		m.rendered, m.err = m.renderer.Render(fmt.Sprintf(format, message))
 		if err != nil {
-			m.err = err
 			return m, m.errCmd
 		}
-		messages := append(m.messages, rendered)
+		messages := append(m.messages, m.rendered)
 		content := strings.Join(messages, "")
 		m.viewport.SetContent(content)
 		m.viewport.GotoBottom()
@@ -183,7 +182,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg
 	case closeMsg:
 		m.loading = false
-		m.connecting = false
+		m.interacting = false
 		m.textinput.Blur()
 	default:
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -220,7 +219,7 @@ func (m model) View() string {
 func (m model) helpView() string {
 	if m.textinput.Focused() {
 		return helpStyle.Render(HelpInsertMode)
-	} else if m.connecting {
+	} else if m.interacting {
 		return helpStyle.Render(HelpNormalMode)
 	} else {
 		return helpStyle.Render(HelpNormalReadOnlyMode)
