@@ -1,17 +1,26 @@
 package main
 
 import (
+	"flag"
 	"log"
-	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-var _ tea.Model = &model{}
+var (
+	_        tea.Model = &model{}
+	sockAddr string
+	prompt   string
+)
+
+func init() {
+	flag.StringVar(&sockAddr, "a", "", "Path to the Unix domain socket file.")
+	flag.StringVar(&prompt, "p", "__AFA_PROMPT__", "Prompt string.")
+	flag.Parse()
+}
 
 func main() {
-	addr := os.Args[1]
-	prog := tea.NewProgram(initialModel(addr, "PROMPT"), tea.WithAltScreen())
+	prog := tea.NewProgram(initialModel(sockAddr, prompt), tea.WithAltScreen())
 	if err := prog.Start(); err != nil {
 		log.Fatal(err)
 	}
