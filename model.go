@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/gob"
 	"fmt"
 	"io"
@@ -41,6 +42,7 @@ type model struct {
 	loading   bool
 	viewReady bool
 	messages  []string
+	buffer    bytes.Buffer
 
 	viewport  viewport.Model
 	renderer  *glamour.TermRenderer
@@ -146,19 +148,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.decoder = gob.NewDecoder(msg.conn)
 		cmds = append(cmds, m.receiveCmd)
 	case promptMsg:
-		m.loading = false
-	case sentMsg:
-		m.textinput.Reset()
-		m.state = StateReceiving
-		cmds = append(cmds, m.receiveCmd)
-	case responseMsg:
-		rendered, err := m.renderer.Render(fmt.Sprintf("# Assistant\n\n%s", msg.message))
+		message := m.buffer.String()
+		rendered, err := m.renderer.Render(fmt.Sprintf("# Assistant\n\n%s", message))
 		if err != nil {
 			m.err = err
 			return m, m.errCmd
 		}
 		m.messages = append(m.messages, rendered)
-		content := strings.Join(m.messages, "")
+		m.loading = false
+		m.buffer.Reset()
+	case sentMsg:
+		m.textinput.Reset()
+		m.state = StateReceiving
+		cmds = append(cmds, m.receiveCmd)
+	case responseMsg:
+		m.buffer.WriteString(msg.message)
+		message := m.buffer.String()
+		rendered, err := m.renderer.Render(fmt.Sprintf("# Assistant\n\n%s", message))
+		if err != nil {
+			m.err = err
+			return m, m.errCmd
+		}
+		messages := append(m.messages, rendered)
+		content := strings.Join(messages, "")
 		m.viewport.SetContent(content)
 		m.viewport.GotoBottom()
 
