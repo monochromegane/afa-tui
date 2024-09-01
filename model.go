@@ -49,6 +49,7 @@ type model struct {
 
 	viewport  viewport.Model
 	renderer  *glamour.TermRenderer
+	wrapStyle lipgloss.Style
 	textinput textinput.Model
 	spinner   spinner.Model
 
@@ -89,6 +90,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		roundedBorderSize := 2
+		paddingSize := 2
 		textinputHeight := 1
 		helpHeight := 1
 		footerHeight := textinputHeight + helpHeight + roundedBorderSize
@@ -97,21 +99,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport = viewport.New(msg.Width-roundedBorderSize, msg.Height-footerHeight)
 			m.viewport.Style = lipgloss.NewStyle().
 				BorderStyle(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("62")).
-				PaddingRight(2)
-			m.viewport.Width = msg.Width - roundedBorderSize
-			m.viewport.Height = msg.Height - footerHeight
-			m.renderer, err = glamour.NewTermRenderer(glamour.WithAutoStyle())
-			if err != nil {
-				m.err = err
-				return m, m.errCmd
-			}
+				BorderForeground(lipgloss.Color("62"))
 			m.viewport.SetContent(MessageInitial)
 			m.viewReady = true
-		} else {
-			m.viewport.Width = msg.Width - roundedBorderSize
-			m.viewport.Height = msg.Height - footerHeight
 		}
+		m.viewport.Width = msg.Width - roundedBorderSize
+		m.viewport.Height = msg.Height - footerHeight
+		m.renderer, err = glamour.NewTermRenderer(
+			glamour.WithAutoStyle(),
+			glamour.WithWordWrap(m.viewport.Width-roundedBorderSize-paddingSize),
+		)
+		if err != nil {
+			m.err = err
+			return m, m.errCmd
+		}
+		m.wrapStyle = lipgloss.NewStyle().Width(m.viewport.Width - roundedBorderSize)
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyCtrlC:
@@ -129,7 +131,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.err = err
 				return m, m.errCmd
 			}
-			m.messages = append(m.messages, rendered)
+			wrapped := m.wrapStyle.Render(rendered)
+			m.messages = append(m.messages, wrapped)
 			content := strings.Join(m.messages, "")
 			m.viewport.SetContent(content)
 
@@ -172,6 +175,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if err != nil {
 			return m, m.errCmd
 		}
+		m.rendered = m.wrapStyle.Render(m.rendered)
 		messages := append(m.messages, m.rendered)
 		content := strings.Join(messages, "")
 		m.viewport.SetContent(content)
