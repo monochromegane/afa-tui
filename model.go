@@ -19,9 +19,9 @@ const (
 
 	MessageInitial = "How can I assist you today?"
 
-	HelpNormalMode         = "[NORMAL] i/a: Prompt • j/k: Navigate • ctrl+c: Quit"
-	HelpNormalReadOnlyMode = "[NORMAL](Read Only) j/k: Navigate • ctrl+c: Quit"
-	HelpInsertMode         = "[INSERT] enter: Submit • esc: View • ctrl+c: Quit"
+	HelpNormalMode         = "  [NORMAL] i/a: Prompt • j/k: Navigate • ctrl+c: Quit"
+	HelpNormalReadOnlyMode = "  [NORMAL](Read Only) j/k: Navigate • ctrl+c: Quit"
+	HelpInsertMode         = "  [INSERT] enter: Submit • esc: View • ctrl+c: Quit"
 )
 
 var (
