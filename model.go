@@ -1,17 +1,14 @@
 package main
 
 import (
-	"bytes"
 	"encoding/gob"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -43,13 +40,10 @@ type model struct {
 	loading     bool
 	interacting bool
 	viewReady   bool
-	messages    []string
-	buffer      bytes.Buffer
-	rendered    string
+	chunk       int
 
 	viewport  viewport.Model
-	renderer  *glamour.TermRenderer
-	wrapStyle lipgloss.Style
+	content   content
 	textinput textinput.Model
 	spinner   spinner.Model
 
@@ -65,7 +59,6 @@ func initialModel(sockAddr, prompt string) model {
 		spinner:     spinner.New(),
 		prompt:      prompt,
 		state:       StateConnecting,
-		messages:    []string{},
 	}
 
 	m.textinput.Blur()
@@ -101,19 +94,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				BorderStyle(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("62"))
 			m.viewport.SetContent(MessageInitial)
+			m.viewport.Width = msg.Width - roundedBorderSize
+			m.viewport.Height = msg.Height - footerHeight
+			m.content, err = newContent(
+				m.viewport.Width-roundedBorderSize-paddingSize,
+				m.viewport.Width-roundedBorderSize,
+			)
 			m.viewReady = true
+		} else {
+			m.viewport.Width = msg.Width - roundedBorderSize
+			m.viewport.Height = msg.Height - footerHeight
+			m.content, err = m.content.update(
+				m.viewport.Width-roundedBorderSize-paddingSize,
+				m.viewport.Width-roundedBorderSize,
+			)
+			m.viewport.SetContent(m.content.rendered)
 		}
-		m.viewport.Width = msg.Width - roundedBorderSize
-		m.viewport.Height = msg.Height - footerHeight
-		m.renderer, err = glamour.NewTermRenderer(
-			glamour.WithAutoStyle(),
-			glamour.WithWordWrap(m.viewport.Width-roundedBorderSize-paddingSize),
-		)
 		if err != nil {
 			m.err = err
 			return m, m.errCmd
 		}
-		m.wrapStyle = lipgloss.NewStyle().Width(m.viewport.Width - roundedBorderSize)
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyCtrlC:
@@ -125,16 +125,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if message == "" || m.loading {
 				break
 			}
-
-			rendered, err := m.renderer.Render(fmt.Sprintf("# You\n\n%s\n", message))
+			m.content, err = m.content.add(fmt.Sprintf("# You\n\n%s\n", message))
 			if err != nil {
 				m.err = err
 				return m, m.errCmd
 			}
-			wrapped := m.wrapStyle.Render(rendered)
-			m.messages = append(m.messages, wrapped)
-			content := strings.Join(m.messages, "")
-			m.viewport.SetContent(content)
+			m.viewport.SetContent(m.content.rendered)
 
 			m.loading = true
 			m.textinput.Blur()
@@ -155,30 +151,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.decoder = gob.NewDecoder(msg.conn)
 		cmds = append(cmds, m.receiveCmd)
 	case promptMsg:
-		m.messages = append(m.messages, m.rendered)
 		m.interacting = true
 		m.loading = false
-		m.rendered = ""
-		m.buffer.Reset()
+		m.chunk = 0
 	case sentMsg:
 		m.textinput.Reset()
 		m.state = StateReceiving
 		cmds = append(cmds, m.receiveCmd)
 	case responseMsg:
-		m.buffer.WriteString(msg.message)
-		message := m.buffer.String()
+		m.chunk += 1
 		format := "%s"
-		if m.interacting {
+		if m.interacting && m.chunk == 1 {
 			format = "# Assistant\n\n%s"
 		}
-		m.rendered, m.err = m.renderer.Render(fmt.Sprintf(format, message))
+		m.content, err = m.content.add(fmt.Sprintf(format, msg.message))
 		if err != nil {
+			m.err = err
 			return m, m.errCmd
 		}
-		m.rendered = m.wrapStyle.Render(m.rendered)
-		messages := append(m.messages, m.rendered)
-		content := strings.Join(messages, "")
-		m.viewport.SetContent(content)
+		m.viewport.SetContent(m.content.rendered)
 		m.viewport.GotoBottom()
 
 		cmds = append(cmds, m.receiveCmd)
@@ -187,6 +178,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case closeMsg:
 		m.loading = false
 		m.interacting = false
+		m.chunk = 0
 		m.textinput.Blur()
 	default:
 		m.spinner, cmd = m.spinner.Update(msg)
