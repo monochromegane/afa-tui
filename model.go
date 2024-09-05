@@ -86,6 +86,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		paddingSize := 2
 		textinputHeight := 1
 		helpHeight := 1
+		cursorSize := 1
 		footerHeight := textinputHeight + helpHeight + roundedBorderSize
 
 		if !m.viewReady {
@@ -100,10 +101,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.viewport.Width-roundedBorderSize-paddingSize,
 				m.viewport.Width-roundedBorderSize,
 			)
+			m.textinput.Width = msg.Width - roundedBorderSize - cursorSize
 			m.viewReady = true
 		} else {
 			m.viewport.Width = msg.Width - roundedBorderSize
 			m.viewport.Height = msg.Height - footerHeight
+			m.textinput.Width = msg.Width - roundedBorderSize - cursorSize
 			m.content, err = m.content.update(
 				m.viewport.Width-roundedBorderSize-paddingSize,
 				m.viewport.Width-roundedBorderSize,
