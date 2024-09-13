@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"io"
 
@@ -34,8 +35,9 @@ type model struct {
 	encoder *gob.Encoder
 	decoder *gob.Decoder
 
-	prompt string
-	state  string
+	specialStringPrompt string
+	specialStringError  string
+	state               string
 
 	loading     bool
 	interacting bool
@@ -50,15 +52,16 @@ type model struct {
 	err error
 }
 
-func initialModel(sockAddr, prompt string) model {
+func initialModel(sockAddr, prompt, err string) model {
 	m := model{
-		socket:      socket{sockAddr},
-		loading:     true,
-		interacting: false,
-		textinput:   textinput.New(),
-		spinner:     spinner.New(),
-		prompt:      prompt,
-		state:       StateConnecting,
+		socket:              socket{sockAddr},
+		loading:             true,
+		interacting:         false,
+		textinput:           textinput.New(),
+		spinner:             spinner.New(),
+		specialStringPrompt: prompt,
+		specialStringError:  err,
+		state:               StateConnecting,
 	}
 
 	m.textinput.Blur()
@@ -177,6 +180,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		cmds = append(cmds, m.receiveCmd)
 	case errMsg:
+		if msg.Error() == m.specialStringError {
+			return m, tea.Quit
+		}
 		m.err = msg
 	case closeMsg:
 		m.loading = false
@@ -251,8 +257,10 @@ func (m model) receiveCmd() tea.Msg {
 			return errMsg{err}
 		}
 	}
-	if message == m.prompt {
+	if message == m.specialStringPrompt {
 		return promptMsg{}
+	} else if message == m.specialStringError {
+		return errMsg{errors.New(message)}
 	} else {
 		return responseMsg{message}
 	}
