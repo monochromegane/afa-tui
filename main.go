@@ -19,15 +19,13 @@ var (
 	ver      bool
 )
 
-func init() {
+func main() {
 	flag.StringVar(&sockAddr, "a", "", "Path to the Unix domain socket file.")
 	flag.StringVar(&prompt, "p", "__AFA_PROMPT__", "Prompt string.")
 	flag.StringVar(&err, "e", "__AFA_ERROR__", "Error string.")
 	flag.BoolVar(&ver, "version", false, "Display version.")
 	flag.Parse()
-}
 
-func main() {
 	if ver {
 		fmt.Printf("%s v%s (rev:%s)\n", cmdName, version, revision)
 		os.Exit(0)
