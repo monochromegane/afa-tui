@@ -12,8 +12,16 @@ AFA-TUI is a rich Text User Interface for [AFA](https://github.com/monochromegan
 
 ## Installation
 
-```sh
+```console
 go install github.com/monochromegane/afa-tui@latest
+```
+
+You can download binaries from gihub releases. [https://github.com/monochromegane/afa-tui/releases](https://github.com/monochromegane/afa-tui/releases)
+
+You can also use [Homebrew](https://brew.sh/):
+
+```console
+brew install monochromegane/tap/afa-tui
 ```
 
 ## License
