@@ -1,6 +1,6 @@
 # AFA-TUI
 
-AFA-TUI is a rich Text User Inteface for [AFA](https://github.com/monochromegane.com/afa).
+AFA-TUI is a rich Text User Interface for [AFA](https://github.com/monochromegane.com/afa).
 
 ![Chat](examples/chat.gif)
 
