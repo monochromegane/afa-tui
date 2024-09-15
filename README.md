@@ -1,4 +1,10 @@
 # AFA-TUI
+=======
+
+[![Actions Status](https://github.com/monochromegane/afa-tui/workflows/tagpr/badge.svg?branch=main)][actions]
+
+[actions]: https://github.com/monochromegane/afa-tui/actions?workflow=tagpr
+
 
 AFA-TUI is a rich Text User Interface for [AFA](https://github.com/monochromegane.com/afa).
 
